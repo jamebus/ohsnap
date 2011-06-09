@@ -1,0 +1,134 @@
+#!/bin/sh
+#
+# ohsnap is a program which makes backups from snapshots of XFS filesystems.
+# Non-XFS filesystems are also supported (with no snapshots) to backup the root
+# filesystem.
+#
+@LICENSE@
+
+set -eu
+
+logfile='/var/log/ohsnap.log'
+pidfile='/var/run/ohsnap.pid'
+configfile='@SYSCONFDIR@/ohsnap.conf'
+
+logging_cmd="dd oflag=append conv=notrunc of=$logfile"
+if [ "${1:-}" = '-v' ];  then
+	logging_cmd="tee -a $logfile"
+elif [ -n "${1:-}" ]; then
+	echo "WARNING: Unknown option given, ignoring." 1>&2
+fi
+
+if [ -f "$pidfile" ]; then
+	if kill -0 $(cat "$pidfile") >/dev/null; then
+		echo 'Another instance is running.' 1>&2
+		exit 1
+	fi
+	echo 'Stale pidfile, clearing.' 1>&2
+	rm -f "$pidfile"
+fi
+echo "$$" > "$pidfile"
+
+if [ ! -f "$logfile" ]; then
+	install -m 0640 -o root -g adm /dev/null "$logfile"
+elif [ $(date '+%w') -eq 0 ]; then
+	savelog -p -t -q -n "$logfile"
+fi
+
+(
+
+set -exu
+umask 077
+unset IFS
+
+. "$configfile"
+
+test -n "$destination"
+test -n "$filesystems"
+
+cd "$destination"
+
+if [ ! -d 0 -o $(date '+%w') -eq 0 ]; then
+	level=0
+else
+	level=$(($(cat 0/current_level) + 1))
+fi
+
+if [ $level -eq 0 ]; then
+	destination_current=$(mktemp -d current.XXXXXXXXXX)
+else
+	destination_current=0
+fi
+cd "$destination_current"
+
+df -h > df-h.out
+cp /etc/fstab .
+for c in pvdisplay vgdisplay lvdisplay; do
+	$c > ${c}.out
+done
+
+: ${snapshot_size:='1g'}
+_filesystems=''
+for f in $filesystems; do
+	IFS=':'
+	set -- $f
+	unset IFS
+	name="$1"
+	mp="$2"
+	lvpath="${3:-}"
+	snaplvpath=''
+
+	if [ -n "$lvpath" ]; then
+		lvcreate -L "$snapshot_size" -s -n "snap_${name}" "$lvpath"
+		mp=$(mktemp -d -t)
+		# Is there some dm API / command to do this nicer?
+		snaplvpath="/dev/$(echo $lvpath | sed -r 's,^/dev/([^/]+)/.*,\1,')/snap_${name}"
+		mount -o nouuid,ro "$snaplvpath" "$mp"
+	fi
+	_filesystems="${_filesystems} ${name}:${mp}:${lvpath}:${snaplvpath}"
+done
+filesystems="$_filesystems"
+
+for f in $filesystems; do
+	IFS=':'
+	set -- $f
+	unset IFS
+	name="$1"
+	mp="$2"
+	lvpath="${3:-}"
+	snaplvpath="${4:-}"
+
+	if xfs_info "$mp" >/dev/null 2>&1; then
+		xfs_info "$mp" > "${name}.xfs_info"
+		xfsdump -L "ohsnap-${name}" -l $level - "$mp" | \
+		gzip -c4 > "${name}.${level}.xfsdump.gz"
+	else
+		tar -V "ohsnap-${name}" --listed-incremental="${name}.snar" \
+		--one-file-system -cvf - "$mp" | \
+		gzip -c4 > "${name}.${level}.tar.gz"
+	fi
+
+	if [ -n "$snaplvpath" ]; then
+		umount "$mp"
+		lvremove -f "$snaplvpath"
+		rmdir "$mp"
+	fi
+done
+
+echo "$level" > current_level
+
+: ${cycles:=0}
+if [ $level -eq 0 ]; then
+	cd ..
+	c="$cycles"
+	while [ $c -gt -1 ]; do
+		test -d $c && mv $c $(($c+1))
+		c=$(($c-1))
+	done
+	rm -rf $(($cycles + 1))
+	mv "$destination_current" 0
+fi
+
+) 2>&1 | $logging_cmd 2>/dev/null
+
+rm -f "$pidfile"

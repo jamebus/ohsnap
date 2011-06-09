@@ -1,0 +1,19 @@
+The Makefile accepts several options to influence installation location. These
+are:
+
+prefix     (default: /usr/local)
+sysconfdir (default: ${prefix}/etc)
+sbindir    (default: ${prefix}/sbin)
+
+Install to /usr/local:
+
+make && sudo make install
+
+Install to alternate location:
+
+make prefix=/opt/ohsnap && sudo make prefix=/opt/ohsnap install
+
+Install to /usr with config file in /etc:
+
+make sbindir=/usr/sbin sysconfdir=/etc && \
+sudo make sbindir=/usr/sbin sysconfdir=/etc install

@@ -1,0 +1,26 @@
+#
+# @SYSCONFDIR@/ohsnap.conf -- configuration for ohsnap
+#
+
+# Where to write the backup files. Required.
+destination='/fileserver/backup/hostname'
+
+# Filesystems to backup. Required.
+# name(used_for_file_name):mount_point:logical_volume_path(optional)
+filesystems='
+root:/
+vg001-home:/home:/dev/vg001/home
+vg001-usr:/usr:/dev/vg001/usr
+vg001-var:/var:/dev/vg001/var
+vg001-pbuilder:/var/cache/pbuilder:/dev/vg001/pbuilder
+vg001-music:/music:/dev/vg001/music
+vg001-photos:/photos:/dev/vg001/photos
+'
+
+# Size of snapshot. This should be slightly larger than the amount of data that
+# might be changed while the snapshot is active. See snapshot section of
+# lvcreate(8) man page for more information. Optional, default 1g.
+snapshot_size='1g'
+
+# How many backup cycles to retain. 0 = none. Optional, default 0.
+cycles='1'

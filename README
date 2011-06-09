@@ -1,0 +1,58 @@
+DESCRIPTION
+
+     ohsnap is a program which makes backups from snapshots of XFS
+     filesystems. Non-XFS filesystems are also supported (with no
+     snapshots) to backup the root and/or boot filesystem.
+
+     ohsnap assumes you want a full backup on Sunday and incremental
+     backups the following days. It can also retain a configurable number
+     of previous cycles.
+
+USAGE
+
+     - Edit /usr/local/etc/ohsnap.conf and describe your filesystems.
+
+     - sudo ohsnap
+       or
+       sudo ohsnap -v
+
+       The latter will log to the terminal in addition to the log file.
+
+     - Watch the fun in /var/log/ohsnap.log.
+
+     - Good? Create a cron job for it.
+
+REQUIREMENTS
+
+     - A mostly POSIX-compliant Bourne shell. Tested using dash.
+
+     - Debian or a derivative (such as Ubuntu). Other GNU/Linux-based
+       systems should work with little or no modifications. The only
+       Debian-specific features I'm relying on is the adm group and the
+       savelog(8) command.
+
+     - LVM2 + XFS filesystems.
+
+     - xfs-utils and xfsdump.
+
+     - Common UNIX commands like rm(1), mv(1), install(1), cp(1), df(1),
+       gzip(1). You have these already unless you have a stripped-down
+       system.
+
+FUTURE
+
+     Support other filesystems. EXT4 is a good next target. Also see BUGS.
+
+BUGS
+
+     - Not portable to other GNU/Linux systems other than Debian and it's
+       derivatives.
+
+     - Too specific to my situation.
+
+     - Doesn't clean up after an unexpected termination. Will leave
+       unfinished backup and snapshot volumes hanging around.
+
+     - Please report any findings.
+
+# vim:tw=75:sw=5:ts=5:et:nojs
