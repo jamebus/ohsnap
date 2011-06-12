@@ -13,7 +13,7 @@ pidfile='/var/run/ohsnap.pid'
 configfile='@SYSCONFDIR@/ohsnap.conf'
 
 logging_cmd="dd oflag=append conv=notrunc of=$logfile"
-if [ "${1:-}" = '-v' ];  then
+if [ "${1:-}" = '-v' ]; then
 	logging_cmd="tee -a $logfile"
 elif [ -n "${1:-}" ]; then
 	echo "WARNING: Unknown option given, ignoring." 1>&2
