@@ -1,8 +1,8 @@
 #!/bin/sh
 #
-# ohsnap is a program which makes backups from snapshots of XFS filesystems.
-# Non-XFS filesystems are also supported (with no snapshots) to backup the root
-# filesystem.
+# ohsnap is a program which makes backups of entire filesystems. If the
+# filesystem is on a LVM2 logical volume, a snapshot will be taken and the
+# backup taken from that. This is ideal for a busy system.
 #
 @LICENSE@
 
@@ -46,6 +46,14 @@ unset IFS
 test -n "$destination"
 test -n "$filesystems"
 
+probe_fstype() {
+	# Extra tests for $4 and $2 catch possible output changes between
+	# mount(8) versions.
+	mount | awk -v mp="$1" '
+		($3 == mp && $4 == "type" && $2 == "on") {print $5}
+	'
+}
+
 cd "$destination"
 
 if [ ! -d 0 -o $(date '+%w') -eq 0 ]; then
@@ -77,13 +85,18 @@ for f in $filesystems; do
 	mp="$2"
 	lvpath="${3:-}"
 	snaplvpath=''
+	fstype=$(probe_fstype "$mp")
 
 	if [ -n "$lvpath" ]; then
 		lvcreate -L "$snapshot_size" -s -n "snap_${name}" "$lvpath"
 		mp=$(mktemp -d -t)
 		# Is there some dm API / command to do this nicer?
 		snaplvpath="/dev/$(echo $lvpath | sed -r 's,^/dev/([^/]+)/.*,\1,')/snap_${name}"
-		mount -o nouuid,ro "$snaplvpath" "$mp"
+		if [ "$fstype" = 'xfs' ]; then
+			mount -o nouuid,ro "$snaplvpath" "$mp"
+		else
+			mount -o ro "$snaplvpath" "$mp"
+		fi
 	fi
 	_filesystems="${_filesystems} ${name}:${mp}:${lvpath}:${snaplvpath}"
 done
@@ -97,14 +110,15 @@ for f in $filesystems; do
 	mp="$2"
 	lvpath="${3:-}"
 	snaplvpath="${4:-}"
+	fstype=$(probe_fstype "$mp")
 
-	if xfs_info "$mp" >/dev/null 2>&1; then
+	if [ "$fstype" = 'xfs' ]; then
 		xfs_info "$mp" > "${name}.xfs_info"
 		xfsdump -L "ohsnap-${name}" -l $level - "$mp" | \
 		gzip -c4 > "${name}.${level}.xfsdump.gz"
 	else
 		tar -V "ohsnap-${name}" --listed-incremental="${name}.snar" \
-		--one-file-system -cvf - "$mp" | \
+		--one-file-system -C "$mp" -cvf - . | \
 		gzip -c4 > "${name}.${level}.tar.gz"
 	fi
 

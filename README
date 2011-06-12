@@ -1,12 +1,15 @@
 DESCRIPTION
 
-     ohsnap is a program which makes backups from snapshots of XFS
-     filesystems. Non-XFS filesystems are also supported (with no
-     snapshots) to backup the root and/or boot filesystem.
+     ohsnap is a program which makes backups of entire filesystems. If the
+     filesystem is on a LVM2 logical volume, a snapshot will be taken and
+     the backup taken from that. This is ideal for a busy system.
 
      ohsnap assumes you want a full backup on Sunday and incremental
      backups the following days. It can also retain a configurable number
      of previous cycles.
+
+     If the filesystem type is XFS, xfsdump(8) will be used to conduct the
+     backup, otherwise GNU tar(1) is used.
 
 USAGE
 
@@ -31,9 +34,9 @@ REQUIREMENTS
        Debian-specific features I'm relying on is the adm group and the
        savelog(8) command.
 
-     - LVM2 + XFS filesystems.
+     - xfs-utils and xfsdump (only if backing up XFS filesystems).
 
-     - xfs-utils and xfsdump.
+     - GNU tar (only if backing up non-XFS filesystems).
 
      - Common UNIX commands like rm(1), mv(1), install(1), cp(1), df(1),
        gzip(1). You have these already unless you have a stripped-down
@@ -41,7 +44,7 @@ REQUIREMENTS
 
 FUTURE
 
-     Support other filesystems. EXT4 is a good next target. Also see BUGS.
+     Configurable compression options. Also see BUGS.
 
 BUGS
 
