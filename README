@@ -42,9 +42,12 @@ REQUIREMENTS
        gzip(1). You have these already unless you have a stripped-down
        system.
 
-FUTURE
+COMPRESSION
 
-     Configurable compression options. Also see BUGS.
+     Backups may be compressed using a compression tool specified in
+     ohsnap.conf or automatically chosen. If auto, ohsnap will choose one
+     with a bias toward efficiency. If you want speed, try lzop or gzip
+     instead.
 
 BUGS
 

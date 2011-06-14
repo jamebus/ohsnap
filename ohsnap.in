@@ -54,6 +54,89 @@ probe_fstype() {
 	'
 }
 
+has_cmd() {
+	local rc
+	set +e
+	which "$1" >/dev/null 2>&1
+	rc=$?
+	set -e
+	return $rc
+}
+
+: ${compress:='auto'}
+: ${compress_opts:=''}
+: ${compress_ext:=''}
+
+case "$compress_opts" in
+	[Aa][Uu][Tt][Oo])
+		compress_opts=''
+		;;
+esac
+
+case "$compress_ext" in
+	[Aa][Uu][Tt][Oo])
+		compress_ext=''
+		;;
+esac
+
+case "$compress" in
+	[Aa][Uu][Tt][Oo])
+		compress_opts=''
+		compress_ext=''
+		if has_cmd xz; then
+			compress='xz'
+		elif has_cmd lzma; then
+			compress='lzma'
+		elif has_cmd lzip; then
+			compress='lzip'
+		elif has_cmd bzip2; then
+			compress='bzip2'
+		elif has_cmd gzip; then
+			compress='gzip'
+		elif has_cmd lzop; then
+			compress='lzop'
+		# I feel sorry for for the person who only has compress(1).
+		elif has_cmd compress; then
+			compress='compress'
+		else
+			compress='cat'
+		fi
+		;;
+esac
+
+case "$compress" in
+	'xz')
+		: ${compress_ext:='xz'}
+		: ${compress_opts:='-2'}
+		;;
+	'lzma')
+		: ${compress_ext:='lzma'}
+		: ${compress_opts:='-2'}
+		;;
+	'lzip')
+		: ${compress_ext:='lz'}
+		: ${compress_opts:='-2'}
+		;;
+	'bzip2')
+		: ${compress_ext:='bz2'}
+		: ${compress_opts:='-3'}
+		;;
+	'gzip')
+		: ${compress_ext:='gz'}
+		: ${compress_opts:='-4'}
+		;;
+	'lzop')
+		: ${compress_ext:='lzop'}
+		: ${compress_opts:='-1'}
+		;;
+	'compress')
+		: ${compress_ext:='Z'}
+		;;
+	[Nn][Oo][Nn][Ee])
+		compress='cat'
+		;;
+esac
+
 cd "$destination"
 
 if [ ! -d 0 -o $(date '+%w') -eq 0 ]; then
@@ -115,11 +198,11 @@ for f in $filesystems; do
 	if [ "$fstype" = 'xfs' ]; then
 		xfs_info "$mp" > "${name}.xfs_info"
 		xfsdump -L "ohsnap-${name}" -l $level - "$mp" | \
-		gzip -c4 > "${name}.${level}.xfsdump.gz"
+		"$compress" $compress_opts > "${name}.${level}.xfsdump.${compress_ext}"
 	else
 		tar -V "ohsnap-${name}" --listed-incremental="${name}.snar" \
 		--one-file-system -C "$mp" -cvf - . | \
-		gzip -c4 > "${name}.${level}.tar.gz"
+		"$compress" $compress_opts > "${name}.${level}.tar.${compress_ext}"
 	fi
 
 	if [ -n "$snaplvpath" ]; then

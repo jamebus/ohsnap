@@ -25,3 +25,10 @@ snapshot_size='1g'
 
 # How many backup cycles to retain. 0 = none. Optional, default 0.
 cycles='1'
+
+# How to compress? Any program that accepts input from STDIN and writes to
+# STDOUT may be used. Default, auto. none = no compression.
+compress='auto'
+# If you use compress = auto these settings will be ignored,
+compress_opts='auto'
+compress_ext='auto'
