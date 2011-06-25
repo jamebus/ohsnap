@@ -154,9 +154,13 @@ cd "$destination_current"
 
 df -h > df-h.out
 cp /etc/fstab .
+test -f /proc/mdstat && cp /proc/mdstat .
 for c in pvdisplay vgdisplay lvdisplay; do
 	$c > ${c}.out
 done
+if has_cmd parted; then
+	parted -l > parted.out
+fi
 
 : ${snapshot_size:='1g'}
 _filesystems=''
