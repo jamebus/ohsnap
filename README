@@ -1,8 +1,8 @@
 DESCRIPTION
 
      ohsnap is a program which makes backups of entire filesystems. If the
-     filesystem is on a LVM2 logical volume, a snapshot will be taken and
-     the backup taken from that. This is ideal for a busy system.
+     filesystem is on a LVM2 logical volume or is btrfs, a snapshot will be
+     taken and the backup taken from that. This is ideal for a busy system.
 
      ohsnap assumes you want a full backup on Sunday and incremental
      backups the following days. It can also retain a configurable number
@@ -34,7 +34,11 @@ REQUIREMENTS
        Debian-specific features I'm relying on is the adm group and the
        savelog(8) command.
 
+     - LVM2 if you want snapshots of non-btrfs filesystems (optional).
+
      - xfs-utils and xfsdump (only if backing up XFS filesystems).
+
+     - btrfs-tools (only if backing up btrfs filesystems).
 
      - GNU tar (only if backing up non-XFS filesystems).
 

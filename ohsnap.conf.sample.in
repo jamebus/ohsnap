@@ -6,7 +6,8 @@
 destination='/fileserver/backup/hostname'
 
 # Filesystems to backup. Required. If you specify a logical volume path, a
-# snapshot will be taken.
+# snapshot will be taken (unless filesystem type is btrfs). If using btrfs, a
+# snapshot will be taken using it's native capabilities.
 # name(used_for_file_name):mount_point:logical_volume_path(optional)
 filesystems='
 root:/
