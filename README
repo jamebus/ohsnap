@@ -36,7 +36,8 @@ REQUIREMENTS
 
      - LVM2 if you want snapshots of non-btrfs filesystems (optional).
 
-     - xfs-utils and xfsdump (only if backing up XFS filesystems).
+     - xfs-utils and xfsdump (optional, only if backing up XFS filesystems,
+       will degrade to GNU tar if not present).
 
      - btrfs-tools (only if backing up btrfs filesystems).
 

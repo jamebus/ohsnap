@@ -209,9 +209,13 @@ for f in $filesystems; do
 	lvpath="${3:-}"
 	snaplvpath="${4:-}"
 	fstype=$(probe_fstype "$mp")
+	has_cmd xfs_info && has_xfs_info=1 || has_xfs_info=0
+	has_cmd xfsdump &&  has_xfsdump=1  || has_xfsdump=0
 
-	if [ "$fstype" = 'xfs' ]; then
-		xfs_info "$mp" > "${name}.xfs_info"
+	test "$fstype" = 'xfs' -a "$has_xfs_info" -eq 1 && \
+	  xfs_info "$mp" > "${name}.xfs_info"
+
+	if [ "$fstype" = 'xfs' -a "$has_xfsdump" -eq 1 ]; then
 		xfsdump -L "ohsnap-${name}" -l $level - "$mp" | \
 		"$compress" $compress_opts > "${name}.${level}.xfsdump.${compress_ext}"
 	else
