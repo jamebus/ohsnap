@@ -221,7 +221,7 @@ for f in $filesystems; do
 	fi
 
 	if [ "$fstype" = '' -a \
-	     $(probe_fstype $(dirname "$mp")) = 'btrfs' ]; then
+	     "$(probe_fstype $(dirname "$mp"))" = 'btrfs' ]; then
 		if has_cmd btrfs; then
 			btrfs subvolume delete "$mp"
 		else
