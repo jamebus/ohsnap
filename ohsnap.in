@@ -189,11 +189,7 @@ for f in $filesystems; do
 	fi
 	if [ "$fstype" = 'btrfs' ]; then
 		snap_mp="${mp}/snap_${name}"
-		if has_cmd btrfs; then
-			btrfs subvolume snapshot "$mp" "$snap_mp"
-		else
-			btrfsctl -s "$snap_mp" "$mp"
-		fi
+		btrfs subvolume snapshot "$mp" "$snap_mp"
 		mp="$snap_mp"
 	fi
 	_filesystems="${_filesystems} ${name}:${mp}:${lvpath}:${snaplvpath}"
@@ -226,11 +222,7 @@ for f in $filesystems; do
 
 	if [ "$fstype" = '' -a \
 	     "$(probe_fstype $(dirname "$mp"))" = 'btrfs' ]; then
-		if has_cmd btrfs; then
-			btrfs subvolume delete "$mp"
-		else
-			btrfsctl -D $(basename "$mp") $(dirname "$mp")
-		fi
+		btrfs subvolume delete "$mp"
 	elif [ -n "$snaplvpath" ]; then
 		umount "$mp"
 		lvremove -f "$snaplvpath"
