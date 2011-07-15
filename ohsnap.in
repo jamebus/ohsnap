@@ -354,7 +354,7 @@ for f in $filesystems; do
 	fstype=$(probe_fstype "$mp")
 
 	if [ -n "$lvpath" -a "$fstype" != 'btrfs' ]; then
-		snaplvpath=/dev/$(resolve_lvm2_vg_name "$lvpath")/snap_$(resolve_lvm2_lv_name "$lvpath")
+		snaplvpath=/dev/$(resolve_lvm2_vg_name "$lvpath")"/snap_${name}"
 		transaction_add "$snaplvpath"
 		lvcreate -L "$snapshot_size" -s -n "snap_${name}" "$lvpath"
 		mp=$(mktemp -d -t)
