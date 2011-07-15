@@ -59,10 +59,9 @@ BUGS
      - Not portable to other GNU/Linux systems other than Debian and it's
        derivatives.
 
-     - Too specific to my situation.
+     - Snapshots filling up while backup in progress not handled.
 
-     - Doesn't clean up after an unexpected termination. Will leave
-       unfinished backup and snapshot volumes hanging around.
+     - Too specific to my situation.
 
      - Please report any findings.
 

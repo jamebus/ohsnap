@@ -8,6 +8,8 @@
 
 set -eu
 
+trap '' INT TERM HUP
+
 logfile='/var/log/ohsnap.log'
 pidfile='/var/run/ohsnap.pid'
 configfile='@SYSCONFDIR@/ohsnap.conf'
@@ -46,6 +48,39 @@ unset IFS
 test -n "$destination"
 test -n "$filesystems"
 
+# Lifted from comp.unix.shell FAQ
+run() {
+	local j com k l a
+	j=1
+	while eval "\${pipestatus_$j+:} false"; do
+		unset pipestatus_$j
+		j=$(($j+1))
+	done
+	j=1 com= k=1 l=
+	for a; do
+		if [ "x$a" = 'x|' ]; then
+			com="$com { $l "'3>&-
+			            echo "pipestatus_'$j'=$?" >&3
+			          } 4>&- |'
+			j=$(($j+1)) l=
+		else
+			l="$l \"\$$k\""
+		fi
+		k=$(($k+1))
+	done
+	com="$com $l"' 3>&- >&4 4>&-
+	               echo "pipestatus_'$j'=$?"'
+	exec 4>&1
+	eval "$(exec 3>&1; eval "$com")"
+	exec 4>&-
+	j=1
+	while eval "\${pipestatus_$j+:} false"; do
+		eval "[ \$pipestatus_$j -eq 0 ]" || return 1
+		j=$(($j+1))
+	done
+	return 0
+}
+
 probe_fstype() {
 	# Extra tests for $4 and $2 catch possible output changes between
 	# mount(8) versions.
@@ -63,9 +98,137 @@ has_cmd() {
 	return $rc
 }
 
+transaction_add() {
+	transaction_log="$transaction_log $1"
+}
+
+transaction_remove() {
+	transaction_log=$(echo "$transaction_log" | awk -v what=$1 '
+	                { for (i=1; i<=NF; i++) if ($i != what) print $i }')
+}
+
+backup_file() {
+	if [ -f "$1" -a ! -f "${1}.bak" ]; then
+		cp -p "$1" "${1}.bak"
+	fi
+}
+
+resolve_lvm2_vg_name() {
+	is_lvm2 "$1" || return 1
+	lvs --noheadings -o vg_name "$1" | sed -r 's,^ +,,'
+}
+
+resolve_lvm2_lv_name() {
+	is_lvm2 "$1" || return 1
+	lvs --noheadings -o lv_name "$1" | sed -r 's,^ +,,'
+}
+
+is_lvm2() {
+	local rc
+	test -b "$1" || return 1
+	set +e
+	lvs "$1" >/dev/null 2>&1
+	rc=$?
+	set -e
+	return $rc
+}
+
+is_snapshot_lvm2() {
+	local rc
+	is_lvm2 "$1" || return 1
+	resolve_lvm2_lv_name "$1" | grep '^snap_' >/dev/null 2>&1 || return 1
+	set +e
+	lvs --noheadings -o lv_attr "$1" | egrep '^ +[sS]' >/dev/null 2>&1
+	rc=$?
+	set -e
+	return $rc
+}
+
+is_snapshot_lvm2_valid() {
+	local rc
+	is_lvm2 "$1" || return 1
+	is_snapshot_lvm2 "$1" || return 1
+	set +e
+	lvs --noheadings -o lv_attr "$1" | egrep '^ +s' >/dev/null 2>&1
+	rc=$?
+	set -e
+	return $rc
+}
+
+is_snapshot_btrfs() {
+	local rc s
+	s="$1"
+	test -d "$s" || return 1
+	echo "$s" | grep '/snap_' >/dev/null 2>&1 || return 1
+	# Fix cases of //snap_root
+	s=$(echo "$s" | tr -s '/')
+	set +e
+	btrfs subvolume list "$s" | grep " path @${s}$"
+	rc=$?
+	set -e
+	return $rc
+}
+
+is_mountpoint() {
+	local rc
+	test -d "$1" || return 1
+	set +e
+	mount | fgrep " on $1 " >/dev/null 2>&1
+	rc=$?
+	set -e
+	return $rc
+}
+
+reverse_list() {
+	local revlist item
+	revlist=''
+	for item; do
+		revlist="$item $revlist"
+	done
+	echo $revlist
+}
+
+cleanup() {
+	local t
+	for t in $(reverse_list $transaction_log); do
+		if is_snapshot_lvm2 "$t"; then
+			lvremove -f "$t"
+		elif is_snapshot_btrfs "$t"; then
+			btrfs subvolume delete "$t"
+		elif [ -f "${t}.bak" ]; then
+			mv "${t}.bak" "$t"
+		elif [ -f "$t" ]; then
+			rm "$t"
+		elif is_mountpoint "$t"; then
+			umount "$t"
+		elif [ -d "$t" -a "$t" != '0' ]; then
+			rmdir "$t"
+		elif [ "$t" != '0' -a "$t" = "$(basename $(pwd))" ]; then
+			cd ..
+			rmdir "$t"
+		else
+			echo "WARNING: cleanup() fall-through on $t" 1>&2
+		fi
+		transaction_remove "$t"
+	done
+}
+
+quit() {
+	rc=$?
+	trap - quit
+	if [ $rc -gt 0 ]; then
+		echo "TRAP: $rc"
+		cleanup
+	fi
+	exit ${rc:=0}
+}
+
+trap quit 0
+
 : ${compress:='auto'}
 : ${compress_opts:=''}
 : ${compress_ext:=''}
+transaction_log=''
 
 case "$compress_opts" in
 	[Aa][Uu][Tt][Oo])
@@ -147,20 +310,34 @@ fi
 
 if [ $level -eq 0 ]; then
 	destination_current=$(mktemp -d current.XXXXXXXXXX)
+	transaction_add "$destination_current"
 else
 	destination_current=0
 fi
 cd "$destination_current"
 
+backup_file df-h.out
+transaction_add df-h.out
 df -h > df-h.out
+
+backup_file fstab
+transaction_add fstab
 cp /etc/fstab .
+
+backup_file mdstat
+transaction_add mdstat
 test -f /proc/mdstat && cp /proc/mdstat .
+
 for c in pvdisplay vgdisplay lvdisplay; do
 	if has_cmd $c; then
+		backup_file ${c}.out
+		transaction_add ${c}.out
 		$c > ${c}.out
 	fi
 done
 if has_cmd parted; then
+	backup_file parted.out
+	transaction_add parted.out
 	parted -l > parted.out
 fi
 
@@ -177,18 +354,22 @@ for f in $filesystems; do
 	fstype=$(probe_fstype "$mp")
 
 	if [ -n "$lvpath" -a "$fstype" != 'btrfs' ]; then
+		snaplvpath=/dev/$(resolve_lvm2_vg_name "$lvpath")/snap_$(resolve_lvm2_lv_name "$lvpath")
+		transaction_add "$snaplvpath"
 		lvcreate -L "$snapshot_size" -s -n "snap_${name}" "$lvpath"
 		mp=$(mktemp -d -t)
-		# Is there some dm API / command to do this nicer?
-		snaplvpath="/dev/$(echo $lvpath | sed -r 's,^/dev/([^/]+)/.*,\1,')/snap_${name}"
+		transaction_add "$mp"
 		if [ "$fstype" = 'xfs' ]; then
+			transaction_add "$mp"
 			mount -o nouuid,ro "$snaplvpath" "$mp"
 		else
+			transaction_add "$mp"
 			mount -o ro "$snaplvpath" "$mp"
 		fi
 	fi
 	if [ "$fstype" = 'btrfs' ]; then
 		snap_mp="${mp}/snap_${name}"
+		transaction_add "$snap_mp"
 		btrfs subvolume snapshot "$mp" "$snap_mp"
 		mp="$snap_mp"
 	fi
@@ -207,34 +388,51 @@ for f in $filesystems; do
 	fstype=$(probe_fstype "$mp")
 	has_cmd xfs_info && has_xfs_info=1 || has_xfs_info=0
 	has_cmd xfsdump &&  has_xfsdump=1  || has_xfsdump=0
+	test -n "$snaplvpath" && is_snapshot_lvm2_valid "$snaplvpath"
 
-	test "$fstype" = 'xfs' -a "$has_xfs_info" -eq 1 && \
-	  xfs_info "$mp" > "${name}.xfs_info"
+	if [ "$fstype" = 'xfs' -a "$has_xfs_info" -eq 1 ]; then
+		backup_file "${name}.xfs_info"
+		transaction_add "${name}.xfs_info"
+		xfs_info "$mp" > "${name}.xfs_info"
+	fi
 
 	if [ "$fstype" = 'xfs' -a "$has_xfsdump" -eq 1 ]; then
-		xfsdump -L "ohsnap-${name}" -l $level - "$mp" | \
-		"$compress" $compress_opts > "${name}.${level}.xfsdump.${compress_ext}"
+		transaction_add "${name}.${level}.xfsdump.${compress_ext}"
+		run xfsdump -L "ohsnap-${name}" -l $level - "$mp" \| \
+		    "$compress" $compress_opts > \
+		    "${name}.${level}.xfsdump.${compress_ext}"
 	else
-		tar -V "ohsnap-${name}" --listed-incremental="${name}.snar" \
-		--one-file-system -C "$mp" -cvf - . | \
-		"$compress" $compress_opts > "${name}.${level}.tar.${compress_ext}"
+		backup_file "${name}.snar"
+		transaction_add "${name}.snar"
+		transaction_add "${name}.${level}.tar.${compress_ext}"
+		run tar -V "ohsnap-${name}" \
+		        --listed-incremental="${name}.snar" \
+		        --one-file-system -C "$mp" -cvf - . \| \
+		    "$compress" $compress_opts > \
+		    "${name}.${level}.tar.${compress_ext}"
 	fi
 
 	if [ "$fstype" = '' -a \
 	     "$(probe_fstype $(dirname "$mp"))" = 'btrfs' ]; then
 		btrfs subvolume delete "$mp"
+		transaction_remove "$mp"
 	elif [ -n "$snaplvpath" ]; then
 		umount "$mp"
+		transaction_remove "$mp"
 		lvremove -f "$snaplvpath"
+		transaction_remove "$snaplvpath"
 		rmdir "$mp"
+		transaction_remove "$mp"
 	fi
 done
 
+backup_file "current_level"
+transaction_add "current_level"
 echo "$level" > current_level
 
+cd ..
 : ${cycles:=0}
 if [ $level -eq 0 ]; then
-	cd ..
 	c="$cycles"
 	while [ $c -gt -1 ]; do
 		test -d $c && mv $c $(($c+1))
@@ -244,6 +442,11 @@ if [ $level -eq 0 ]; then
 	mv "$destination_current" 0
 fi
 
+for t in $transaction_log; do
+	test -f "0/${t}.bak" && rm "0/${t}.bak"
+done
+
+trap - quit
 ) 2>&1 | $logging_cmd 2>/dev/null
 
 rm -f "$pidfile"
