@@ -220,7 +220,7 @@ quit() {
 		echo "TRAP: $rc"
 		cleanup
 	fi
-	exit ${rc:=0}
+	exit ${rc:-0}
 }
 
 trap quit 0
